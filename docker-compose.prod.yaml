@@ -1,0 +1,56 @@
+services:
+    nginx:
+        image: nginx:alpine
+        container_name: nginx
+        depends_on:
+            - php-fpm
+        ports:
+            - "80:80"
+            - "443:443" # Expose port 443 for HTTPS
+        volumes:
+            - ./nginx/prod.conf:/etc/nginx/conf.d/default.conf
+            - ./app:/var/www/html
+            - ./certbot/conf:/etc/letsencrypt # Volume for Certbot certificates
+            - ./certbot/logs:/var/log/letsencrypt # Volume for Certbot logs
+        networks:
+            - app-network
+
+    php-fpm:
+        image: php:8.3-fpm
+        build:
+            context: ./php
+        environment:
+            - CI_ENV=production
+        container_name: php-fpm
+        volumes:
+            - ./app:/var/www/html
+        networks:
+            - app-network
+
+    mysql:
+        image: mysql:8.0
+        container_name: mysql
+        environment:
+            MYSQL_ROOT_PASSWORD: root
+            MYSQL_DATABASE: test_db
+            MYSQL_USER: dev
+            MYSQL_PASSWORD: test
+        command: --default-authentication-plugin=mysql_native_password
+        volumes:
+            - ./app/database/test_db.sql:/docker-entrypoint-initdb.d/init.sql # SQL file for initialization
+        networks:
+            - app-network
+
+    certbot:
+        image: certbot/certbot
+        container_name: certbot
+        volumes:
+            - ./certbot/conf:/etc/letsencrypt # Volume for Certbot certificates
+            - ./certbot/logs:/var/log/letsencrypt # Volume for Certbot logs
+        entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'" # Renew certificates every 12 hours
+        networks:
+            - app-network
+
+networks:
+    app-network:
+        driver: bridge
